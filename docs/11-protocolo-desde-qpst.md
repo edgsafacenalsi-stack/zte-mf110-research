@@ -9,6 +9,75 @@
 
 ---
 
+## ✅ Verificado en hardware
+
+**El handshake funciona.** Probado contra el stick en modo `0076`:
+
+### Paquete enviado
+
+```
+7e 01 51434f4d206661737420646f776e6c6f61642070726f746f636f6c20686f7374 030309 c632 7e
+│  │  └────────── "QCOM fast download protocol host" ──────────┘ │││ │     │
+│  │                                                             │││ │     └ CRC
+│  │                                                             │││ └─── featureBits (0x09)
+│  │                                                             ││└───── compatible (0x03)
+│  │                                                             │└────── versión (0x03)
+│  │                                                             └─────── ??? (0x03)
+│  └───────────────────────────────────────────────────────────────────── tipo de comando (0x01 = HELLO)
+└─────────────────────────────────────────────────────────────────────── delimitador HDLC
+```
+
+### Respuesta obtenida
+
+```
+02 00
+│  └── longitud del payload = 0
+└───── tipo 0x02 = OK
+```
+
+### Prueba de que el CRC es el correcto
+
+Se enviaron 4 variantes de framing. **Todas las de CRC correcto devolvieron `02 00`**:
+
+| Variante | Resultado |
+|---|---|
+| Con escape HDLC | ✅ `02 00` |
+| Sin escape (no hay bytes a escapar) | ✅ `02 00` |
+| Doble `0x7E` al inicio | ✅ `02 00` |
+| Sin `0x7E` final | ✅ `02 00` |
+| **CRC sin `swap16`** | ❌ `ERR: CRC invalid` |
+| **CRC little-endian** | ❌ `ERR: CRC invalid` |
+
+**El CRC de `tools/armpg.py` es la única combinación aceptada por el
+hardware.** Eso valida toda la reconstrucción.
+
+### Lo que sigue sin funcionar
+
+| Comando | Respuesta |
+|---|---|
+| `0x03`, `0x04`, `0x05`, `0x06` | `ERR: CRC invalid` |
+| `0x0C` | `ERR: CRC invalid` |
+| `0x07` | **reset del stick** (vuelve a `0031` solo) |
+
+**Los comandos de un solo byte no alcanzan.** Casi seguro esperan un payload
+con parámetros específicos, igual que el HELLO.
+
+### Evidencia de la NAND
+
+En una prueba previa (buffer del puerto con residuo de una sesión anterior)
+apareció esta respuesta:
+
+```
+SAMSUNG_K9F1208d
+00 80 00 00   00 08 00 00   00 08 00 00   ...
+```
+
+Es la **identificación de la flash NAND del stick**. No se pudo reproducir
+de forma limpia, pero confirma que la secuencia correcta existe y produce
+datos reales del hardware.
+
+---
+
 ## Resumen
 
 1. El **magic** del host es `"QCOM fast download protocol host"` (32 bytes).

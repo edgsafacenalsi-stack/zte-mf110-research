@@ -68,31 +68,41 @@ propio intento inicial):
 
 Eso abre la puerta a usar herramientas serie estándar en vez de libusb.
 
-### 4. El protocolo está resuelto — hay un cliente funcional
+### 4. El handshake **está verificado en hardware**
 
-El bloqueo que dominó la investigación (el `ERR: CRC invalid`) **ya no lo es**.
+Probado contra el stick en `0076`:
 
-**El CRC es software**, del lado del host:
+```
+Enviado:   7e 01 <"QCOM fast download protocol host"> 03 03 09 c632 7e
+Respuesta: 02 00        (tipo 0x02 = OK, longitud 0)
+```
+
+Se probaron 4 variantes de framing: todas con CRC correcto devolvieron
+`02 00`; las de CRC incorrecto fueron rechazadas con `ERR: CRC invalid`.
+**Eso valida la implementación.**
+
+**Lo que falta:** los comandos siguientes (`0x03`–`0x06`, `0x0C`) devuelven
+`ERR: CRC invalid` con un solo byte — probablemente esperan payloads con
+parámetros, igual que el HELLO.
+
+**Pista:** en una prueba apareció la identificación de la NAND del stick
+(`SAMSUNG_K9F1208d`), lo que confirma que la secuencia correcta existe.
+
+El CRC es software, del lado del host:
 
 ```
 CRC-16 CCITT reflejado, init=0x0000, xorOut=0xFFFF, luego swap de bytes
 ```
 
-Verificado contra la implementación de referencia
-[`jcsullins/qdloader`](https://github.com/jcsullins/qdloader): ambas dan
-`0x995C` para el magic.
+Verificado contra [`jcsullins/qdloader`](https://github.com/jcsullins/qdloader):
+ambas implementaciones dan `0x995C` (magic) y `0xC632` (Hello).
 
 ```
-Host envía:   "QCOM fast download protocol host"   (32 bytes)
-Target responde: "QCOM fast download protocol targ" (32 bytes)
+Host envía:      "QCOM fast download protocol host"   (32 bytes)
+Target responde: "QCOM fast download protocol targ"   (32 bytes)
 ```
 
-Cliente listo en [`tools/armpg.py`](tools/armpg.py).
-
-> **Nota sobre un error corregido:** en una versión anterior de este repo
-> se afirmó que el CRC lo calculaba el *Crypto Engine* del hardware.
-> Era incorrecto. El desarrollo del error y su corrección están en
-> [docs/11](docs/11-protocolo-desde-qpst.md#por-qué-me-equivoqué).
+Cliente en [`tools/armpg.py`](tools/armpg.py).
 
 ---
 
