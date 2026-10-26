@@ -89,10 +89,14 @@ class Armpg:
         self.fd = None
 
     def open(self):
+        # CRITICO: poner el TTY en modo raw, sin eco ni extensiones.
+        # Sin esto el driver 'option' procesa los bytes y los 0x7E/0x7D
+        # se corrompen. Es lo que hace qdloader con:
+        #     stty raw -iexten -echo
+        os.system(f"stty -F {self.port} raw -iexten -echo 2>/dev/null")
         self.fd = os.fdopen(
             os.open(self.port, os.O_RDWR | os.O_NONBLOCK | os.O_NOCTTY),
             "r+b", buffering=0)
-        # limpiar
         self._read(0.3)
         return self
 
@@ -124,54 +128,91 @@ class Armpg:
             print(f"  --> {payload[:20].hex()}{'...' if len(payload) > 20 else ''}")
         self.fd.write(pkt)
 
-    def recv_packet(self, timeout=2.0):
-        """Lee un paquete HDLC y devuelve el payload sin CRC."""
-        buf = b""
+    def recv_packet(self, timeout=2.5):
+        """Lee UN paquete HDLC completo. Devuelve payload sin CRC, o None.
+
+        Algoritmo de qdloader: espera el 0x7E inicial, acumula hasta el
+        siguiente 0x7E, desescapa y quita los 2 bytes de CRC.
+        """
+        # esperar 0x7E inicial
         end = time.time() + timeout
-        started = False
         while time.time() < end:
-            r, _, _ = select.select([self.fd], [], [], 0.08)
+            r, _, _ = select.select([self.fd], [], [], 0.05)
             if not r:
                 continue
             try:
-                chunk = os.read(self.fd.fileno(), 4096)
+                c = os.read(self.fd.fileno(), 1)
             except OSError:
-                break
-            if not chunk:
+                return None
+            if not c:
                 continue
-            for byte in chunk:
-                b = bytes([byte])
-                if b == b"\x7e":
-                    if started and buf:
-                        data = unescape(buf)
-                        return data[:-2] if len(data) > 2 else data
-                    started = True
-                    buf = b""
-                elif started:
-                    buf += b
-            end = time.time() + 0.3
-        if started and buf:
-            data = unescape(buf)
-            return data[:-2] if len(data) > 2 else data
+            if c[0] == 0x7E:
+                break
+        else:
+            return None
+
+        # acumular hasta el 0x7E de cierre
+        buf = bytearray()
+        end = time.time() + timeout
+        while time.time() < end:
+            r, _, _ = select.select([self.fd], [], [], 0.05)
+            if not r:
+                continue
+            try:
+                c = os.read(self.fd.fileno(), 1)
+            except OSError:
+                return None
+            if not c:
+                continue
+            if c[0] == 0x7E:
+                data = unescape(bytes(buf))
+                return data[:-2] if len(data) > 2 else data
+            buf.append(c[0])
         return None
 
     # ---- comandos ----
 
     def hello(self):
-        """Handshake. Devuelve True si el target responde con su magic."""
+        """Handshake. Devuelve (ok, info, respuesta_cruda).
+
+        La respuesta valida empieza con 0x02 y contiene el magic del target,
+        seguido de la geometria de la NAND.
+        """
         payload = (bytes([0x01]) + MAGIC_HOST
                    + bytes([VERSION, COMPATIBLE, FEATURE_BITS]))
         self.send(payload)
-        resp = self.recv_packet(2.5)
+        resp = self.recv_packet(3.0)
         if resp is None:
-            return False, "sin respuesta"
+            return False, "sin respuesta", None
         if len(resp) > 33 and resp[0] == 0x02 and resp[1:33] == MAGIC_TARG:
-            return True, f"magic OK (ver={resp[33:].hex()})"
+            info = f"magic del target OK, protocolo v{resp[33]}.{resp[34]}"
+            nand = None
+            i = resp.find(b"SAMSUNG")
+            if i < 0:
+                i = resp.find(b"\x0fSAMSUNG")
+            if i >= 0:
+                j = resp.find(b"\x00", i)
+                nand = resp[i:j].decode(errors="replace").lstrip("\x0f")
+                info += f", NAND={nand}"
+            return True, info, resp
         if resp[0] == 0x0D:
-            return False, f"ERROR: {resp[5:].decode(errors='replace').strip()}"
+            return False, f"ERROR: {resp[5:].decode(errors='replace').strip()}", resp
         if resp[0] == 0x0E:
-            return False, f"MSG: {resp[1:].decode(errors='replace').strip()}"
-        return False, f"respuesta inesperada: {resp[:40].hex()}"
+            return False, f"MSG: {resp[1:].decode(errors='replace').strip()}", resp
+        return False, f"respuesta inesperada (tipo 0x{resp[0]:02x})", resp
+
+    def request_params(self):
+        """Pide los parametros del target (comando 0x07)."""
+        self.send(bytes([0x07]))
+        return self.recv_packet(3.0)
+
+    def close_flush(self):
+        self.send(bytes([0x15]))
+        return self.recv_packet(2.0)
+
+    def secure_mode(self, mode=1):
+        self.send(bytes([0x17, mode]))
+        return self.recv_packet(2.0)
 
     def get_version(self):
         """Pide la version del software del target."""
@@ -209,9 +250,28 @@ def main():
     c = Armpg(port, debug=debug).open()
     try:
         if mode == "probe":
-            ok, msg = c.hello()
+            ok, msg, raw = c.hello()
             print(f"[{'OK' if ok else '!'}] hello: {msg}")
+            if ok and raw:
+                print(f"\n[*] respuesta completa: {len(raw)} bytes")
+                import re
+                for m in re.finditer(rb"[\x20-\x7e]{4,}", raw):
+                    print(f"    @{m.start():4d}: {m.group().decode()}")
             return 0 if ok else 1
+
+        if mode == "params":
+            ok, msg, _ = c.hello()
+            print(f"[{'OK' if ok else '!'}] hello: {msg}")
+            if not ok:
+                return 1
+            time.sleep(0.3)
+            r = c.request_params()
+            if r is None:
+                print("[!] requestParam: silencio")
+                return 1
+            print(f"[*] params: tipo=0x{r[0]:02x} len={len(r)}")
+            print(f"    {r[:80].hex()}")
+            return 0 if r[0] == 0x08 else 1
 
         if mode == "version":
             ok, msg = c.hello()

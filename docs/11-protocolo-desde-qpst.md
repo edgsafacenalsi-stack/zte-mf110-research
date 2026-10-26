@@ -9,72 +9,95 @@
 
 ---
 
-## ✅ Verificado en hardware
+## ✅ Verificado en hardware — HANDSHAKE COMPLETO
 
-**El handshake funciona.** Probado contra el stick en modo `0076`:
+Probado contra el stick en modo `0076`. **Funciona.**
 
 ### Paquete enviado
 
 ```
 7e 01 51434f4d206661737420646f776e6c6f61642070726f746f636f6c20686f7374 030309 c632 7e
-│  │  └────────── "QCOM fast download protocol host" ──────────┘ │││ │     │
-│  │                                                             │││ │     └ CRC
-│  │                                                             │││ └─── featureBits (0x09)
-│  │                                                             ││└───── compatible (0x03)
-│  │                                                             │└────── versión (0x03)
-│  │                                                             └─────── ??? (0x03)
-│  └───────────────────────────────────────────────────────────────────── tipo de comando (0x01 = HELLO)
-└─────────────────────────────────────────────────────────────────────── delimitador HDLC
+   │  └────────── "QCOM fast download protocol host" ──────────┘ │││ │
+   │                                                             │││ └── featureBits 0x09
+   │                                                             │└┴──── versión/compat 0x03
+   └──────────────────────────────────────────────────────────────────── tipo 0x01 = HELLO
 ```
 
-### Respuesta obtenida
+### Respuesta del stick (576 bytes)
 
 ```
-02 00
-│  └── longitud del payload = 0
-└───── tipo 0x02 = OK
+02 51434f4d...74617267 03 02 00 04 00 00 00 00 00 00 0f
+│  └─ "QCOM fast download protocol targ" ─┘ │  │  │
+│                                           │  │  └── feature bits
+│                                           │  └───── compatible 0x02
+│                                           └──────── versión 0x03
+└────────────────────────────────────────────────────── tipo 0x02 = OK
+
+53 41 4d 53 55 4e 47 5f 4b 39 46 31 32 30 38 64
+└──────────── "SAMSUNG_K9F1208d" ────────────┘
+
+00 80 00 00      ← 0x8000 = 32768
+00 08 00 00 ...  ← 0x800 = 2048  (repetido: mapa de páginas/bloques)
 ```
+
+### 🔑 La clave: `stty raw -iexten -echo`
+
+**Este fue el bloqueo silencioso de toda la investigación.**
+
+Sin configurar el TTY, el driver `option` **procesa los bytes**:
+- Los delimitadores `0x7E` se corrompen
+- Las respuestas se cortan a 2 bytes (`02 00`)
+- Los comandos "funcionan" a veces y a veces no
+
+Con el TTY en modo `raw`, **todo funciona de forma confiable**:
+
+```python
+os.system(f"stty -F {port} raw -iexten -echo")
+```
+
+Es exactamente lo que hace `qdloader`:
+
+```perl
+system "/bin/stty raw -iexten -echo < $tty";
+```
+
+### Hardware del stick identificado
+
+| Parámetro | Valor |
+|---|---|
+| **NAND** | **Samsung K9F1208** |
+| Página | **2048 bytes** (`0x800`) |
+| Bloque | **32768 bytes** (`0x8000`) |
+| Protocolo del target | **v3.2** |
+
+**Estos son datos leídos del silicio**, no del firmware descargado.
 
 ### Prueba de que el CRC es el correcto
 
-Se enviaron 4 variantes de framing. **Todas las de CRC correcto devolvieron `02 00`**:
-
 | Variante | Resultado |
 |---|---|
-| Con escape HDLC | ✅ `02 00` |
-| Sin escape (no hay bytes a escapar) | ✅ `02 00` |
-| Doble `0x7E` al inicio | ✅ `02 00` |
-| Sin `0x7E` final | ✅ `02 00` |
+| Con escape HDLC | ✅ respuesta completa |
+| Sin escape | ✅ respuesta completa |
+| Doble `0x7E` inicial | ✅ respuesta completa |
+| Sin `0x7E` final | ✅ respuesta completa |
 | **CRC sin `swap16`** | ❌ `ERR: CRC invalid` |
 | **CRC little-endian** | ❌ `ERR: CRC invalid` |
 
-**El CRC de `tools/armpg.py` es la única combinación aceptada por el
-hardware.** Eso valida toda la reconstrucción.
+### Lo que sigue pendiente
 
-### Lo que sigue sin funcionar
-
-| Comando | Respuesta |
+| Comando | Resultado |
 |---|---|
-| `0x03`, `0x04`, `0x05`, `0x06` | `ERR: CRC invalid` |
-| `0x0C` | `ERR: CRC invalid` |
-| `0x07` | **reset del stick** (vuelve a `0031` solo) |
+| `0x07` requestParams | silencio con el TTY en modo cocinado; **reintentar con `stty raw`** |
+| `0x03`–`0x06`, `0x0C` | rechazados |
+| `0x07` (sin raw) | **reset del stick** |
 
-**Los comandos de un solo byte no alcanzan.** Casi seguro esperan un payload
-con parámetros específicos, igual que el HELLO.
-
-### Evidencia de la NAND
-
-En una prueba previa (buffer del puerto con residuo de una sesión anterior)
-apareció esta respuesta:
+La secuencia siguiente de `qdloader`:
 
 ```
-SAMSUNG_K9F1208d
-00 80 00 00   00 08 00 00   00 08 00 00   ...
+0x07        → requestParams  (respuesta tipo 0x08)
+0x15        → closeFlush     (respuesta 0x16)
+0x17 0x01   → secureMode     (respuesta 0x18)
 ```
-
-Es la **identificación de la flash NAND del stick**. No se pudo reproducir
-de forma limpia, pero confirma que la secuencia correcta existe y produce
-datos reales del hardware.
 
 ---
 

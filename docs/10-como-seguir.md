@@ -6,6 +6,26 @@ El protocolo **está resuelto**. Lo que sigue es ejecutar el flasheo.
 
 ---
 
+## ⚠️ ANTES DE TODO: el TTY debe estar en modo `raw`
+
+**Este fue el bloqueo silencioso de la investigación.** Sin esto, el driver
+`option` corrompe los bytes y las respuestas se cortan.
+
+```bash
+stty -F /dev/ttyUSB0 raw -iexten -echo
+```
+
+El cliente ya lo hace automáticamente al abrir el puerto. Pero si probás
+con otras herramientas, **no lo olvides**.
+
+Es lo que hace `qdloader`:
+
+```perl
+system "/bin/stty raw -iexten -echo < $tty";
+```
+
+---
+
 ## Dónde estamos
 
 | Etapa | Estado |
@@ -13,12 +33,24 @@ El protocolo **está resuelto**. Lo que sigue es ejecutar el flasheo.
 | Acceso DIAG | ✅ |
 | Lectura/escritura NV | ✅ |
 | Entrada a modo download `0076` | ✅ |
-| **Handshake del protocolo** | ✅ **magic + CRC correctos** |
+| **Handshake del protocolo** | ✅ **verificado: magic + NAND real** |
+| RequestParams (`0x07`) | ⏳ pendiente con TTY raw |
 | Secuencia de flasheo | ⏳ siguiente paso |
 | Escritura de NAND | ⏳ no intentada |
 
 El cliente con el CRC correcto está en
-[`tools/armpg.py`](../tools/armpg.py).
+[`tools/armpg.py`](../tools/armpg.py):
+
+```bash
+python3 tools/armpg.py probe     # handshake + identificación de NAND
+python3 tools/armpg.py params    # pedir parámetros
+```
+
+Resultado real del `probe`:
+
+```
+[OK] hello: magic del target OK, protocolo v3.2, NAND=SAMSUNG_K9F1208d
+```
 
 ---
 

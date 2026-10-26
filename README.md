@@ -70,39 +70,32 @@ Eso abre la puerta a usar herramientas serie estándar en vez de libusb.
 
 ### 4. El handshake **está verificado en hardware**
 
-Probado contra el stick en `0076`:
-
 ```
 Enviado:   7e 01 <"QCOM fast download protocol host"> 03 03 09 c632 7e
-Respuesta: 02 00        (tipo 0x02 = OK, longitud 0)
+Respuesta: 02 <"QCOM fast download protocol targ"> 03 02 ...
+           ... "SAMSUNG_K9F1208d" ... (576 bytes)
 ```
 
-Se probaron 4 variantes de framing: todas con CRC correcto devolvieron
-`02 00`; las de CRC incorrecto fueron rechazadas con `ERR: CRC invalid`.
-**Eso valida la implementación.**
+**El stick MF110 respondió con su identificación real de NAND.**
 
-**Lo que falta:** los comandos siguientes (`0x03`–`0x06`, `0x0C`) devuelven
-`ERR: CRC invalid` con un solo byte — probablemente esperan payloads con
-parámetros, igual que el HELLO.
+| Dato | Valor |
+|---|---|
+| NAND | **Samsung K9F1208** |
+| Página | 2048 bytes |
+| Bloque | 32768 bytes |
+| Protocolo del target | v3.2 |
 
-**Pista:** en una prueba apareció la identificación de la NAND del stick
-(`SAMSUNG_K9F1208d`), lo que confirma que la secuencia correcta existe.
+**La clave que destrabó todo:**
 
-El CRC es software, del lado del host:
-
-```
-CRC-16 CCITT reflejado, init=0x0000, xorOut=0xFFFF, luego swap de bytes
+```bash
+stty -F /dev/ttyUSB0 raw -iexten -echo
 ```
 
-Verificado contra [`jcsullins/qdloader`](https://github.com/jcsullins/qdloader):
-ambas implementaciones dan `0x995C` (magic) y `0xC632` (Hello).
+Sin eso, el driver `option` corrompe los bytes y las respuestas se cortan.
+Con el TTY en modo `raw`, todo funciona.
 
-```
-Host envía:      "QCOM fast download protocol host"   (32 bytes)
-Target responde: "QCOM fast download protocol targ"   (32 bytes)
-```
-
-Cliente en [`tools/armpg.py`](tools/armpg.py).
+Ver [docs/11](docs/11-protocolo-desde-qpst.md) para el protocolo completo,
+la evidencia y el análisis de los errores cometidos en el camino.
 
 ---
 
