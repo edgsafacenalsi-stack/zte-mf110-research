@@ -76,6 +76,38 @@ python3 tools/dl76.py one 1 00..00   # con payload hex
 **Verifica integridad antes y después de cada comando** (`AT+ZSEC?`) y
 aborta si el stick no vuelve sano.
 
+### `tools/hello_magic.py`
+
+Prueba el **magic real del protocolo** (`"QCOM fast download protocol host"`)
+y sus variantes con los bytes de versión.
+
+```bash
+python3 tools/hello_magic.py
+```
+
+**Verificado contra hardware.** Resultado clave:
+
+| Enviado | Respuesta |
+|---|---|
+| `9a1b7daa...` + HDLC | `Invalid Command` |
+| `QCOM fast...` raw | (silencio) |
+| **`QCOM fast...` + HDLC** | **`ERR: CRC invalid`** |
+
+El cambio de mensaje confirma que el magic es correcto.
+
+### `tools/hello_crc.py`
+
+Barrido de 228 combinaciones (19 variantes de CRC × 6 payloads × 2 framings)
+con el magic correcto.
+
+```bash
+python3 tools/hello_crc.py
+```
+
+**Resultado: todas dan `CRC invalid`.** Está documentado a propósito —
+ver [doc 11](../docs/11-dll-qpst-y-crc-hardware.md) para entender por qué
+(el CRC es hardware).
+
 ### `tools/dl76_crc_hunt.py`
 
 Prueba sistemática de variantes de CRC y framing contra el bootloader,

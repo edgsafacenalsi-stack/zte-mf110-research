@@ -175,10 +175,9 @@ def send_cmd(payload):
 def at_check(port="/dev/ttyUSB2"):
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import at_scan
-        at_scan.PORT = port
-        r1 = at_scan.send("AT", wait=1.0) or []
-        r2 = at_scan.send("AT+ZSEC?", wait=1.5) or []
+        import at as atmod
+        r1 = atmod.send("AT", port=port, wait=1.0) or []
+        r2 = atmod.send("AT+ZSEC?", port=port, wait=1.5) or []
         ok = any("OK" in x for x in r1)
         sec = next((x for x in r2 if "ZSEC" in x), "?")
         return ok, sec

@@ -66,21 +66,62 @@ Existen implementaciones libres del protocolo ARMPRG (es de 2007):
 
 ---
 
-## Paso 3b — Windows real en VM (la ruta más probable)
+## Paso 3 — QPST en Windows real (útil, pero ya no es la vía principal)
 
-Dado que el algoritmo vive en una DLL de Windows sin símbolos,
-**ejecutar QPST en un Windows de verdad** es más viable que reimplementarlo.
-
-Requisitos:
+Sigue siendo válido si el objetivo es **flashear ya** sin entender por qué
+funciona. Requiere:
 
 - VirtualBox 7.2+ con **Extension Pack** (sin él no hay USB 2.0/3.0)
 - Una ISO de Windows (7/10/11)
 - Passthrough USB del stick en `19d2:0076`
-- Instalar el **driver ZTE** dentro del Windows
 
-**Por qué esta vía y no Wine:** en Wine, "Add New Port" crashea y
-`Download.exe` queda en `No Phone Connected`. Ver
+**Por qué:** en Wine, "Add New Port" crashea y `Download.exe` queda en
+`No Phone Connected`. Ver
 [07](07-lo-que-no-funciono.md#7-qpst-27496-en-wine--instalación).
+
+**Pero ya no es la única opción**: ver el Paso 3c.
+
+---
+
+## ⭐ Paso 3c — Identificar el modo 2 del Crypto Engine (la vía más prometedora)
+
+Este es el paso pendiente más valioso. Ver
+[doc 11](11-dll-qpst-y-crc-hardware.md).
+
+El CRC del protocolo lo calcula el **bloque CE (Crypto Engine)** del
+chipset, no software. La función `0x1679c` del firmware lo configura con
+**modo 2**:
+
+```
+0x167d4  str r0, [r4, #4]      ; modo = 2
+0x167e0  stm r2, {r0, r1, r5, r7}   ; modo, 0, len, ...
+0x167e8  str r0, [r4, #0x1c]   ; dispara
+```
+
+### Qué buscar
+
+En el kernel de Linux, driver del Crypto Engine de Qualcomm:
+
+```
+linux/drivers/crypto/qce/
+```
+
+Buscar:
+
+1. Qué corresponde al **modo 2** en MSM6290 (o generación equivalente).
+2. El **polinomio** usado en ese modo.
+3. Reflejo de entrada/salida y valor inicial.
+4. Tamaño de palabra (probablemente 32 bits, dado `str r0,[r4,#4]=2`).
+
+### Cómo confirmar que se acertó
+
+Una vez implementado en Python, generar el paquete Hello y enviarlo por
+`/dev/ttyUSB0` en modo `0076` (ver [doc 05](05-modo-download.md)).
+
+**Si deja de responder `ERR: CRC invalid`, el CRC es correcto.**
+
+Los scripts para probar ya están hechos:
+`tools/hello_magic.py` y `tools/hello_crc.py`.
 
 ---
 

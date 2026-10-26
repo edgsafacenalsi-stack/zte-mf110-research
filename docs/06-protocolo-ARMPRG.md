@@ -191,20 +191,22 @@ Desensamblando `nandprgcombined.mbn` se siguió la cadena completa:
 **La "validación" del ARMPRG termina en un registro de hardware UART**
 (`str [sl, #0x304]`), no en un algoritmo de CRC.
 
-### ⚠️ La consecuencia
+### ⚠️ Corrección posterior (ver [doc 11](11-dll-qpst-y-crc-hardware.md))
 
-**`ERR: CRC invalid` no lo calcula el ARMPRG: lo calcula QPST.**
+En una primera lectura se concluyó que **`ERR: CRC invalid` lo calculaba
+QPST** en `QMSL_MSVC10R.dll`. **Eso resultó incorrecto.**
 
-El ARMPRG solamente **compara** el paquete recibido contra lo que espera.
-El algoritmo real vive en **`QMSL_MSVC10R.dll`** (17 MB, Windows x86, sin
-símbolos).
+Lo que se verificó después:
 
-**Eso cambia la estrategia:** reimplementar el protocolo sin QPST exige
-reproducir el algoritmo de esa DLL, no el del firmware. Es un bloqueo más
-duro de lo que parecía al principio.
+- El **magic real** es `"QCOM fast download protocol host"` (32 bytes).
+- Con ese magic, el error cambia de `Invalid magic number` a `CRC invalid`.
+- La función `0x1679c` del firmware **dispara el Crypto Engine del hardware**
+  y lee el resultado de un registro (`str [r4,#0x1c]`, `ldr [r4,#0x1c]`).
 
-La ruta más razonable pasa a ser **QPST en un Windows real** (VM con
-passthrough USB), no la reimplementación.
+**El CRC es hardware.** Ningún algoritmo de software coincide — se probaron
+228 variantes.
+
+Ver [doc 11](11-dll-qpst-y-crc-hardware.md) para el desarrollo completo.
 
 ### Aún así, las pruebas de framing siguen siendo válidas
 

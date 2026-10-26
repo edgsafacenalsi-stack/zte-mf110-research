@@ -68,25 +68,29 @@ propio intento inicial):
 
 Eso abre la puerta a usar herramientas serie estándar en vez de libusb.
 
-### 4. El framing exacto del protocolo sigue pendiente
+### 4. El CRC lo calcula el **hardware**, no un algoritmo
 
-Es **el único bloqueo restante**. Lo que se sabe:
+Es el hallazgo que cierra la pregunta central del proyecto.
 
-- El paquete tiene una estructura con secuencia, tipo y dirección.
-- Comandos válidos: **2 a 6**.
-- La respuesta siempre lleva **tipo 4** (éxito) o **5** (info).
-- Hay un `checksum` que es una **suma** de campos, no un CRC polinómico.
-- Se probaron 21 variantes de CRC16 + variantes de framing: **ninguna aceptada**.
+- El **magic real** del protocolo es `"QCOM fast download protocol host"`
+  (32 bytes). Confirmado contra el stick: el error cambia de
+  `Invalid magic number` a `ERR: CRC invalid`.
+- Se probaron **228 variantes de CRC software**: ninguna coincide.
+- La razón: en `nandprgcombined.mbn`, la función `0x1679c` **dispara el
+  Crypto Engine** del chipset y lee el resultado de un registro.
 
-**El hallazgo decisivo:** el `ERR: CRC invalid` **no lo calcula el
-firmware, lo calcula QPST.** El ARMPRG sólo compara. El algoritmo real
-está en `QMSL_MSVC10R.dll` (Windows, sin símbolos).
+```
+0x167e8  str r0, [r4, #0x1c]   ; dispara el cálculo en hardware
+0x167ec  str r6, [r4, #0x20]   ; dirección del buffer
+0x167f4  ldr r0, [r4, #0x1c]   ; lee el resultado
+```
 
-Eso convierte "reimplementar el protocolo" en "portar la lógica de una
-DLL de Windows" — y hace que **QPST en una VM con Windows real** sea la
-ruta más viable.
+**Ningún CRC de software va a coincidir.** Para resolverlo hay que
+identificar el modo 2 del bloque CE del MSM6290 (documentado en el driver
+`qce` del kernel Linux).
 
-Detalle en [docs/06-protocolo-ARMPRG.md](docs/06-protocolo-ARMPRG.md).
+Detalle completo en
+[docs/11-dll-qpst-y-crc-hardware.md](docs/11-dll-qpst-y-crc-hardware.md).
 
 ---
 
@@ -116,7 +120,9 @@ Probado contra hardware real (stick sano, `ZSEC 2,1`):
 | `tools/diag.py` | ⚠️ abre y autentica; lectura NV intermitente |
 | `tools/nv.py` | ⚠️ depende de lo anterior; reintenta |
 | `tools/dl76.py` | ⚠️ requiere entrar a `0076`; no probado de punta a punta |
-| `tools/dl76_crc_hunt.py` | ⚠️ requiere `0076` con ttyUSB |
+| `tools/dl76_crc_hunt.py` | ✅ usado contra hardware |
+| `tools/hello_magic.py` | ✅ verificado — magic aceptado por el stick |
+| `tools/hello_crc.py` | ✅ verificado — 228 pruebas, todas `CRC invalid` |
 
 Las limitaciones están explicadas en cada documento, no escondidas.
 
