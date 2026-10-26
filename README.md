@@ -68,29 +68,31 @@ propio intento inicial):
 
 Eso abre la puerta a usar herramientas serie estándar en vez de libusb.
 
-### 4. El CRC lo calcula el **hardware**, no un algoritmo
+### 4. El protocolo está resuelto — hay un cliente funcional
 
-Es el hallazgo que cierra la pregunta central del proyecto.
+El bloqueo que dominó la investigación (el `ERR: CRC invalid`) **ya no lo es**.
 
-- El **magic real** del protocolo es `"QCOM fast download protocol host"`
-  (32 bytes). Confirmado contra el stick: el error cambia de
-  `Invalid magic number` a `ERR: CRC invalid`.
-- Se probaron **228 variantes de CRC software**: ninguna coincide.
-- La razón: en `nandprgcombined.mbn`, la función `0x1679c` **dispara el
-  Crypto Engine** del chipset y lee el resultado de un registro.
+**El CRC es software**, del lado del host:
 
 ```
-0x167e8  str r0, [r4, #0x1c]   ; dispara el cálculo en hardware
-0x167ec  str r6, [r4, #0x20]   ; dirección del buffer
-0x167f4  ldr r0, [r4, #0x1c]   ; lee el resultado
+CRC-16 CCITT reflejado, init=0x0000, xorOut=0xFFFF, luego swap de bytes
 ```
 
-**Ningún CRC de software va a coincidir.** Para resolverlo hay que
-identificar el modo 2 del bloque CE del MSM6290 (documentado en el driver
-`qce` del kernel Linux).
+Verificado contra la implementación de referencia
+[`jcsullins/qdloader`](https://github.com/jcsullins/qdloader): ambas dan
+`0x995C` para el magic.
 
-Detalle completo en
-[docs/11-dll-qpst-y-crc-hardware.md](docs/11-dll-qpst-y-crc-hardware.md).
+```
+Host envía:   "QCOM fast download protocol host"   (32 bytes)
+Target responde: "QCOM fast download protocol targ" (32 bytes)
+```
+
+Cliente listo en [`tools/armpg.py`](tools/armpg.py).
+
+> **Nota sobre un error corregido:** en una versión anterior de este repo
+> se afirmó que el CRC lo calculaba el *Crypto Engine* del hardware.
+> Era incorrecto. El desarrollo del error y su corrección están en
+> [docs/11](docs/11-protocolo-desde-qpst.md#por-qué-me-equivoqué).
 
 ---
 

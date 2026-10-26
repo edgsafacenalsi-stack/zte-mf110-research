@@ -105,7 +105,7 @@ python3 tools/hello_crc.py
 ```
 
 **Resultado: todas dan `CRC invalid`.** Está documentado a propósito —
-ver [doc 11](../docs/11-dll-qpst-y-crc-hardware.md) para entender por qué
+ver [doc 11](../docs/11-protocolo-desde-qpst.md) para entender por qué
 (el CRC es hardware).
 
 ### `tools/dl76_crc_hunt.py`

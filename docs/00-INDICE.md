@@ -12,7 +12,7 @@
 | 08 | [Ingeniería inversa del firmware](08-firmware-re.md) | Strings, ARM, offsets, símbolos encontrados |
 | 09 | [Workspace y herramientas](09-herramientas.md) | Scripts incluidos y cómo usarlos |
 | 10 | [Cómo seguir](10-como-seguir.md) | Próximos pasos concretos |
-| 11 | [La DLL de QPST y el CRC de hardware](11-dll-qpst-y-crc-hardware.md) | **El hallazgo que cierra el debate** |
+| 11 | [El protocolo desde QPST](11-protocolo-desde-qpst.md) | **El CRC real y el cliente funcional** |
 | 12 | [Estado del stick y recuperación](12-estado-y-recuperacion.md) | Cómo verificar que está sano y volver |
 
 ## Lectura rápida

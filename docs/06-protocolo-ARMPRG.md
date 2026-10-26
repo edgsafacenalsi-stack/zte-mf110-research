@@ -191,22 +191,24 @@ Desensamblando `nandprgcombined.mbn` se siguió la cadena completa:
 **La "validación" del ARMPRG termina en un registro de hardware UART**
 (`str [sl, #0x304]`), no en un algoritmo de CRC.
 
-### ⚠️ Corrección posterior (ver [doc 11](11-dll-qpst-y-crc-hardware.md))
+### ⚠️ Corrección posterior (ver [doc 11](11-protocolo-desde-qpst.md))
 
 En una primera lectura se concluyó que **`ERR: CRC invalid` lo calculaba
-QPST** en `QMSL_MSVC10R.dll`. **Eso resultó incorrecto.**
+QPST**, y después que lo calculaba el **hardware**. **Ambas lecturas eran
+incorrectas.**
 
-Lo que se verificó después:
+Lo verificado:
 
-- El **magic real** es `"QCOM fast download protocol host"` (32 bytes).
-- Con ese magic, el error cambia de `Invalid magic number` a `CRC invalid`.
-- La función `0x1679c` del firmware **dispara el Crypto Engine del hardware**
-  y lee el resultado de un registro (`str [r4,#0x1c]`, `ldr [r4,#0x1c]`).
+- El **magic del host** es `"QCOM fast download protocol host"` (32 bytes).
+- El **magic del target** es `"QCOM fast download protocol targ"`.
+- El **CRC es software**: CRC-16 CCITT reflejado, `init=0`, `xorOut=0xFFFF`,
+  luego swap de bytes.
+- Verificado contra [`jcsullins/qdloader`](https://github.com/jcsullins/qdloader):
+  ambas implementaciones dan `0x995C` para el magic.
+- Cliente funcional: [`tools/armpg.py`](../tools/armpg.py).
 
-**El CRC es hardware.** Ningún algoritmo de software coincide — se probaron
-228 variantes.
-
-Ver [doc 11](11-dll-qpst-y-crc-hardware.md) para el desarrollo completo.
+Ver [doc 11](11-protocolo-desde-qpst.md) para el desarrollo completo,
+incluido el análisis del error.
 
 ### Aún así, las pruebas de framing siguen siendo válidas
 
