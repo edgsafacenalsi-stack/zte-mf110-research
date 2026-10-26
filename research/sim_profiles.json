@@ -1,0 +1,37 @@
+{
+  "_nota": "Resultados de AT y de sondeo al bootloader 0076 con dos SIM distintas. Los IMSI estan redactados. Las pruebas de 'boot' se hicieron enviando payloads cortos por libusb; ver docs/05 y docs/06.",
+  "sim_claro (no autorizada)": {
+    "at": {
+      "AT": "OK",
+      "AT+CPIN?": "+CPIN: READY | OK",
+      "AT+CFUN?": "+CFUN: 5 | OK",
+      "AT+ZSEC?": "+ZSEC: 2,1 | OK",
+      "AT+ZNCK?": "+ZNCK: 5 | OK",
+      "AT+CREG?": "+CREG: 0,0 | OK",
+      "IMSI (redactado)": "722310XXXXXXXXX"
+    }
+  },
+  "sim_personal (autorizada)": {
+    "at": {
+      "AT+ZSEC?": "+ZSEC: 3,0 | OK",
+      "AT+ZNCK?": "+ZNCK: 5 | OK",
+      "AT+CREG?": "+CREG: 0,1 | OK",
+      "IMSI (redactado)": "72234XXXXXXXXXX",
+      "nota": "Registra en red y recibe SMS. AT+CLCK devuelve 0 (stub)."
+    }
+  },
+  "sondeo_al_bootloader_0076 (payload corto, libusb)": {
+    "01 (sin magic)": "Invalid magic number",
+    "01 + magic 01020304": "Invalid magic number",
+    "01 + magic 00000000": "Invalid magic number",
+    "00": "Invalid magic number",
+    "02": "Invalid magic number",
+    "07": "Invalid magic number",
+    "08": "Invalid Command",
+    "10": "Invalid Command",
+    "3A": "Invalid Command",
+    "40": "Invalid Command",
+    "41": "Invalid Command",
+    "_observacion": "Los comandos 0x01/0x02/0x00 llegaban a la fase de chequeo de magic. Los demas se rechazan con 'Invalid Command'. Confirma que hay un magic y que el framing HDLC llega al parser."
+  }
+}

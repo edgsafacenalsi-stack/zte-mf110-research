@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Firmware pesado (solo se versiona nandprgcombined.mbn)
+firmware/*.mbn
+!firmware/nandprgcombined.mbn
+firmware/*.7z
+firmware/*.bin
+
+# Wine / QPST
+wineprefix/
+qpst/
+*.msi
+*.reg
+msi_tables/
+
+# Datos sensibles
+research/*.local.json
+*.local.*
+
+# Basura
+*.log
+*.tmp
+.DS_Store
