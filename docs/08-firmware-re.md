@@ -126,8 +126,25 @@ bootloader.** Ese fue el cambio de modelo mental que destrabó todo.
 [0x28] e59f10e8     ← primer instrucción ARM
 ```
 
-**Base de carga `0x800028`.** Calculada cruzando el literal pool
-con el header (`0x81a7d4 - 0x1a7ac = 0x800028`).
+**Base de carga `0x800000`.** Calculada cruzando el literal pool
+con el header (`0x81a7d4 - 0x1a7ac = 0x800028`, pero el código arranca en
+`0x28` del archivo y `0x28` ya es la primera instrucción, así que la base
+efectiva para desensamblar es **`0x800000`**).
+
+### ⚠️ Cómo NO usar radare2 con este binario
+
+```bash
+# MAL: con -m 0x800028 r2 lee el offset equivocado y da basura
+r2 -a arm -b 32 -m 0x800028 firmware/nandprgcombined.mbn
+
+# BIEN: sin -m y con io.va=false
+r2 -a arm -b 32 firmware/nandprgcombined.mbn
+# dentro:  e io.va=false   → navegás por offset de archivo
+```
+
+También ojo: `pd N` a veces omite instrucciones en este binario. Usar
+`capstone` directamente (via `tools/disasm.py`) es más confiable para
+bloques completos.
 
 ### Identificación
 
@@ -150,9 +167,15 @@ Usa **capstone** y aplica la base automáticamente.
 
 | Offset | Qué hay |
 |---|---|
+| `0x5068` | **Validación principal del paquete** |
 | `0x5948` | Dispatcher de comandos (2..6) |
 | `0x5a24` | Construcción de respuesta tipo 5 (`EF 02 01`) |
 | `0x5af4` | Validación de secuencia (0 o 1) |
+| `0x816c60` | **Validador** (handler `+0x4c` de la tabla) |
+| `0x16d5c` | **Función maestra**: `sl=0xb` (11 fragmentos) |
+| `0x80c7d8` | Handler `+0x3c` → **driver UART** |
+| `0xc880` | `str r0,[sl,#0x304]` — **registro de hardware** |
+| `0x1a14c` | **Tabla de handlers** |
 | `0x8ec0` | Copia de buffer (**no** es el validador, error corregido) |
 | `0x8ee8` | Verificación de paquete y checksum |
 | `0x9040` | `ADD r0, r0, r2` — el **checksum es una suma** |

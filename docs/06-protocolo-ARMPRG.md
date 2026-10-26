@@ -171,6 +171,43 @@ Esto corresponde al mensaje `checksum failed`, que es **distinto** de
 
 **El framing exacto en el cable (wire format).** Es el único bloqueo.
 
+### El hallazgo decisivo (radare2, base `0x800000`)
+
+Desensamblando `nandprgcombined.mbn` se siguió la cadena completa:
+
+```
+0x5954  ldrb r0,[r4,#2]   ; tipo (4,5,6)
+0x5970  bl   0x5068       ; validación principal
+0x5068  ldr  r1,[r4,#0x10]  ; tabla de handlers
+0x507c  ldr  r2,[r1,#0x4c]  ; handler[0x4C] = validador
+0x5084  blx  r2           ; ¡valida!
+0x1a14c    tabla de handlers (+0x4c = 0x816c60)
+0x816c60   validador → 0x1650 (registro de hardware)
+0x16d5c    función maestra, sl=0xb (11 fragmentos)
+0x80c7d8   handler +0x3c → driver UART
+0xc880     str r0,[sl,#0x304]  ← ¡REGISTRO DE HARDWARE!
+```
+
+**La "validación" del ARMPRG termina en un registro de hardware UART**
+(`str [sl, #0x304]`), no en un algoritmo de CRC.
+
+### ⚠️ La consecuencia
+
+**`ERR: CRC invalid` no lo calcula el ARMPRG: lo calcula QPST.**
+
+El ARMPRG solamente **compara** el paquete recibido contra lo que espera.
+El algoritmo real vive en **`QMSL_MSVC10R.dll`** (17 MB, Windows x86, sin
+símbolos).
+
+**Eso cambia la estrategia:** reimplementar el protocolo sin QPST exige
+reproducir el algoritmo de esa DLL, no el del firmware. Es un bloqueo más
+duro de lo que parecía al principio.
+
+La ruta más razonable pasa a ser **QPST en un Windows real** (VM con
+passthrough USB), no la reimplementación.
+
+### Aún así, las pruebas de framing siguen siendo válidas
+
 Se probaron:
 
 | Variante | Resultado |

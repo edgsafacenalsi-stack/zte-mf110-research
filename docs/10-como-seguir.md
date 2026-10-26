@@ -51,44 +51,82 @@ Esto revela el formato de la respuesta, y por simetría parte del de entrada.
 
 ---
 
-## Paso 3 — Probar el servidor ARMPRG con un cliente existente (2 h)
+## Paso 3 — Buscar implementaciones libres de ARMPRG (2 h)
 
-Existen implementaciones libres de ARMPRG en Linux:
+Existen implementaciones libres del protocolo ARMPRG (es de 2007):
 
-- **`armprg` de `libqmi` / `openmoko`** — el protocolo es de 2007, hay
-  código por ahí.
-- Buscar `"ARMPRG"` en repositorios de flasheo de módems viejos.
-- También hubo un cliente en Python para MSM7x00.
+- Buscar `"ARMPRG"` en repositorios de flasheo de módems Qualcomm viejos.
+- Proyectos de la era MSM7x00 / MSM62xx.
 
-**Ventaja:** si alguno funciona, no hay que reimplementar nada.
-**Probarlo contra el stick y ver si el framing coincide.**
+**Ventaja:** si alguna funciona, no hay que reimplementar nada.
 
-> Si aparece uno que funcione, **contribuir el resultado acá**.
+> ⚠️ **Ojo con una trampa:** el CRC que el ARMPRG valida **se calcula del
+> lado del host** (QPST). Ver `QMSL_MSVC10R.dll`. Una implementación libre
+> sólo sirve si trae ese mismo algoritmo.
 
 ---
 
-## Paso 4 — Desensamblar completo con radare2 (3-4 h)
+## Paso 3b — Windows real en VM (la ruta más probable)
+
+Dado que el algoritmo vive en una DLL de Windows sin símbolos,
+**ejecutar QPST en un Windows de verdad** es más viable que reimplementarlo.
+
+Requisitos:
+
+- VirtualBox 7.2+ con **Extension Pack** (sin él no hay USB 2.0/3.0)
+- Una ISO de Windows (7/10/11)
+- Passthrough USB del stick en `19d2:0076`
+- Instalar el **driver ZTE** dentro del Windows
+
+**Por qué esta vía y no Wine:** en Wine, "Add New Port" crashea y
+`Download.exe` queda en `No Phone Connected`. Ver
+[07](07-lo-que-no-funciono.md#7-qpst-27496-en-wine--instalación).
+
+---
+
+## Paso 4 — Desensamblar completo con radare2 (hecho)
 
 ```bash
-sudo pacman -S radare2
-r2 -a arm -b 32 -m 0x800028 firmware/nandprgcombined.mbn
+r2 -a arm -b 32 firmware/nandprgcombined.mbn
+# dentro:
+e io.va=false        # IMPORTANTE: usar offsets de archivo
+aaa
+afl
+s 0x5068            # función de validación principal
+pdf
 ```
 
-Dentro:
+> **Nota sobre r2:** con `-m 0x800028` r2 lee el offset equivocado. La base
+> real es **`0x800000`**, y lo más confiable es `e io.va=false` y navegar
+> por offset de archivo directamente.
 
-```
-aaa                      ; análisis automático
-afl                      ; listar funciones
-s 0x808ee8               ; ir a la función de verificación
-pdf                      ; desensamblar con análisis
-```
+### Lo que ya se encontró con radare2
 
-Con análisis automático se obtienen **referencias cruzadas**, que es lo que
-con capstone a mano no se tiene. Eso responde:
+| Offset | Qué es |
+|---|---|
+| `0x5068` | Validación principal del paquete |
+| `0x5954` | Dispatcher: `ldrb r0,[r4,#2]`, `cmp #4/#5/#6` |
+| `0x5a24` | Respuesta tipo 5 (`EF 02 01`) |
+| `0x1a14c` | **Tabla de handlers** (offset `+0x4c` = validador) |
+| `0x816c60` | Validador → `0x1650` (espera registro HW) |
+| `0x16d5c` | Función maestra: `sl=0xb` = 11 fragmentos |
+| `0x80c7d8` | Handler `+0x3c` → **driver UART** (`str [sl,#0x304]`) |
 
-- ¿Dónde se calcula el CRC que se compara?
-- ¿Qué función lee el magic?
-- ¿Cuál es el formato exacto del header?
+### ⚠️ El hallazgo que cambia todo
+
+`ERR: CRC invalid` **no lo calcula el ARMPRG**. Lo calcula **QPST** y el
+ARMPRG sólo lo compara contra el paquete recibido.
+
+El código del ARMPRG que "valida" termina en un **registro de hardware UART**
+(`str [sl, #0x304]`), no en un algoritmo de CRC.
+
+**Consecuencia:** reimplementar el flasheo sin QPST exige reproducir el
+algoritmo de **`QMSL_MSVC10R.dll`** (17 MB, sin símbolos, Windows x86), no
+el del firmware. Ese es el verdadero bloqueo, y es más duro de lo que
+parecía al principio.
+
+La ruta más razonable pasa a ser **hacer correr QPST en un Windows real**
+(máquina virtual), no reimplementarlo.
 
 ---
 

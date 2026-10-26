@@ -78,6 +78,14 @@ Es **el único bloqueo restante**. Lo que se sabe:
 - Hay un `checksum` que es una **suma** de campos, no un CRC polinómico.
 - Se probaron 21 variantes de CRC16 + variantes de framing: **ninguna aceptada**.
 
+**El hallazgo decisivo:** el `ERR: CRC invalid` **no lo calcula el
+firmware, lo calcula QPST.** El ARMPRG sólo compara. El algoritmo real
+está en `QMSL_MSVC10R.dll` (Windows, sin símbolos).
+
+Eso convierte "reimplementar el protocolo" en "portar la lógica de una
+DLL de Windows" — y hace que **QPST en una VM con Windows real** sea la
+ruta más viable.
+
 Detalle en [docs/06-protocolo-ARMPRG.md](docs/06-protocolo-ARMPRG.md).
 
 ---
