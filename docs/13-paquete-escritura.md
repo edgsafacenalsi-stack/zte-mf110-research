@@ -84,6 +84,72 @@ firmware. Ver abajo.
 
 ---
 
+## Análisis del firmware: desalineación del desensamblado
+
+Un problema metodológico que consumió tiempo y conviene documentar:
+
+**El desensamblado ARM de este binario puede dar resultados falsos si la
+alineación está corrida.** Leyendo bloques con `capstone.disasm(data[a:b], a)`
+se obtienen instrucciones válidas sintácticamente pero **que no son el
+código real**, si `a` no cae en un límite de instrucción.
+
+Ejemplo real de esta investigación:
+
+```
+# MAL: 0x112a4 desalineado
+0x112a4: mov r1, r7        ← parece válido
+0x112a8: mov r0, #8        ← parece válido
+0x112ac: bl  0x16b94       ← parece válido
+
+# BIEN: leyendo dwords primero y verificando
+0x112a4: e1a01007  mov r1, r7
+0x112a8: e3a00008  mov r0, #8
+0x112ac: eb001638  bl  0x16b94
+```
+
+En este caso coincidía, pero en otros tramos daba basura como
+`addeq sl, r1, r8, asr #13` (instrucciones condicionales imposibles
+en medio de una función).
+
+**Recomendación:** antes de interpretar, verificar que el primer word de
+la función sea un prólogo válido (`e92d40f0` = `push {r4-r7,lr}`, etc.)
+y que no aparezcan instrucciones con condición `EQ` sueltas.
+
+### Donde el análisis quedó
+
+Se identificó una función en `0x111dc` que:
+
+```
+0x111dc: push {r4,r5,r6,r7,r8,lr}
+0x111e0: mov  r5, r0              ; r5 = parámetro
+0x111e4: ldr  r0, =flag
+0x111ec: ldrb r0, [r0]
+0x111f0: cmp  r0, #0
+0x111f4: bne  0x112a4             ; ya inicializado
+0x111f8: mov  r2, #0x20           ; 32
+0x111fc: ldr  r1, =0x817db2       ; "QCOM fast download protocol host"
+0x11200: add  r0, r5, #7          ; r5 + 7
+0x11204: blx  memcmp
+0x11208: cmp  r0, #0
+0x1120c: ldrne r1, =error
+```
+
+**Esto sugiere que el magic va en el offset 7**, pero:
+
+- **No se logró reproducir contra el stick.** Todos los intentos con
+  header de 7 bytes dieron `Invalid Command`.
+- **El hello que SÍ funciona** manda el magic **al principio** (offset 0).
+
+Por lo tanto: **`0x111dc` probablemente no es la función que procesa
+nuestro hello**, sino otra ruta del firmware (posiblemente el código que
+el ARMPRG usa cuando él mismo actúa como host, o el manejo de un buffer
+interno distinto).
+
+**Conclusión:** la estructura del paquete de escritura **sigue sin
+resolverse**, y el análisis estático por sí solo no alcanzó.
+
+---
+
 ## Intentos fallidos (documentados a propósito)
 
 | Paquete enviado | Respuesta |
