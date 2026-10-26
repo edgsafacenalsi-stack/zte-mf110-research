@@ -19,38 +19,49 @@ import time
 PORT = "/dev/ttyUSB2"
 
 
-def send(cmd, port=None, wait=1.2):
-    """Envía un comando AT y devuelve las líneas de respuesta."""
+def send(cmd, port=None, wait=1.5):
+    """Envía un comando AT y devuelve las líneas de respuesta.
+
+    Usa un puerto bloqueante con flush previo. Es más lento que
+    select() pero evita mezclarse con el buffer del driver, que en
+    este módem produce respuestas corruptas tipo "AT+ZAT+ZAT+ZSEC?".
+    """
     port = port or PORT
     with open(port, "r+b", buffering=0) as f:
-        f.write(b"\r")
-        time.sleep(0.1)
+        # limpiar residuos del comando anterior
         try:
+            f.write(b"\r")
+            time.sleep(wait * 0.6)
             f.read(4096)
         except Exception:
             pass
+
         f.write(cmd.encode() + b"\r")
 
         lines = []
-        end = time.time() + wait
         buf = b""
-        while time.time() < end:
+        deadline = time.time() + wait
+        while time.time() < deadline:
             try:
                 chunk = f.read(4096)
             except Exception:
-                time.sleep(0.05)
+                time.sleep(0.02)
                 continue
-            if chunk:
-                buf += chunk
-                end = time.time() + 0.3
-                while b"\r\n" in buf or b"\n" in buf:
-                    sep = b"\r\n" if b"\r\n" in buf else b"\n"
-                    line, buf = buf.split(sep, 1)
-                    line = line.decode(errors="replace").strip()
-                    if line:
-                        lines.append(line)
-                    if line in ("OK", "ERROR") or line.startswith("+CME ERROR"):
-                        return lines
+            if not chunk:
+                continue
+            buf += chunk
+            deadline = time.time() + 0.3
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                line = line.decode(errors="replace").strip("\r").strip()
+                if not line:
+                    continue
+                # descartar ecos partidos del comando anterior ("AT+Z", "AT")
+                if line in ("AT", "AT+Z") or line == cmd:
+                    continue
+                lines.append(line)
+                if line == "OK" or line == "ERROR" or line.startswith("+CME ERROR"):
+                    return lines
         return lines
 
 
@@ -65,8 +76,12 @@ def main():
         return 1
     for cmd in args:
         print(f">>> {cmd}")
-        for line in send(cmd, port=port):
+        resp = send(cmd, port=port)
+        if not resp:
+            print("    <sin respuesta>")
+        for line in resp:
             print(f"    {line}")
+        time.sleep(0.2)
     return 0
 
 

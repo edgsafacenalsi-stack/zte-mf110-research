@@ -59,10 +59,22 @@ from diag import Diag
 
 d = Diag()
 d.open()            # reclama la interfaz 0
-d.spc()
-print(d.nv_read(0)) # NV item 0
+d.spc()             # SPC + password
+print(d.nv_read(0)) # respuesta desescapada de NV item 0
 d.close()
 ```
+
+> **Limitación conocida:** el cliente incluido abre y autentica el canal
+> DIAG de forma confiable, pero la lectura de NV items es **intermitente**.
+> Las respuestas largas llevan separadores `0x7E` internos y hace falta
+> sincronizar el contador de secuencia del módem.
+>
+> El volcado publicado en `research/` se hizo con un cliente más tolerante
+> que reintentaba y resincronizaba. `tools/nv.py` reintenta, pero avisa
+> cuántos items quedaron sin respuesta.
+>
+> **Esto no invalida el volcado**: los datos son reales. Simplemente el
+> cliente simplificado de este repo no es tan robusto como el original.
 
 ## Entrar al modo download por DIAG
 

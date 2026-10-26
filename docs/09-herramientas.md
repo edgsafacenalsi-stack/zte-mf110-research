@@ -16,7 +16,7 @@ regla udev. Para `usb.core` además puede hacer falta `plugdev`.
 ### `tools/diag.py`
 
 Cliente DIAG mínimo (QCDM): apertura de interfaz, SPC, password, lectura
-y escritura de NV items.
+de NV items.
 
 ```python
 from diag import Diag
@@ -27,26 +27,40 @@ print(d.nv_read(0).hex())
 d.close()
 ```
 
+> **Verificado contra hardware:** SPC y apertura funcionan. La lectura NV
+> es intermitente (ver [docs/02](../docs/02-diag.md#ejemplo-mínimo)).
+
 ### `tools/nv.py`
 
-Volcado y escritura masiva de NV items.
+Volcado y lectura de NV items con reintentos.
 
 ```bash
 python3 tools/nv.py dump 0 999 research/nv.json
 python3 tools/nv.py read 5000
 ```
 
+Reporta cuántos ítems quedaron sin respuesta.
+
 ### `tools/at.py`
 
-Envío de comandos AT por `/dev/ttyUSB2`.
+Envío de comandos AT por `/dev/ttyUSB2`. **Verificado contra hardware.**
 
 ```bash
 python3 tools/at.py 'AT+ZSEC?'
 python3 tools/at.py 'AT+CPMS="ME","ME","ME"' 'AT+CMGL=4'
 ```
 
-> Para leer SMS hay que setear `AT+CPMS="ME","ME","ME"` **antes** de
-> `AT+CMGL=4`.
+Salida real:
+
+```
+>>> AT+ZSEC?
+    +ZSEC: 2,1
+    OK
+```
+
+> Usa puerto bloqueante con limpieza previa. Con `select()` no bloqueante
+> las respuestas salen corruptas (`AT+ZAT+ZAT+ZSEC?`) porque se mezclan
+> con el buffer del driver.
 
 ### `tools/dl76.py`
 

@@ -2,9 +2,7 @@
 """
 Cliente DIAG (QCDM) para ZTE MF110 / MSM6290.
 
-Habla con la interfaz QCDM del módem por libusb. Permite:
-  - autenticarse (SPC + password)
-  - leer y escribir NV items
+Habla con la interfaz QCDM del módem por libusb.
 
 Framing:
   comandos:  0x7E | payload | CRC16-CCITT(ref) LE | 0x7E   (con escapado HDLC)
@@ -12,8 +10,18 @@ Framing:
 
 DIAG está en la INTERFAZ 0 (EP 0x01 OUT / 0x81 IN), no en la 3.
 
+IMPORTANTE — estado de esta implementación:
+  El canal DIAG se abre, autentica (SPC + password) y permite el diálogo
+  básico. La lectura de NV items funciona pero es intermitente: exige
+  sincronizar el contador de secuencia del módem y el framing de las
+  respuestas largas (que llevan separadores 0x7E internos). El volcado
+  completo de este repo se hizo con el cliente original, más tolerante.
+
+  `nv_read()` devuelve la respuesta desescapada en bruto y NO recorta
+  los 128 bytes de datos automáticamente. Ver docs/03-nv.md.
+
 Uso:
-    python3 diag.py
+    python3 diag.py            # prueba de conexión + lectura de NV 0
 """
 import struct
 
@@ -94,25 +102,30 @@ class Diag:
         except Exception:
             pass
 
-    def drain(self, rounds=3, timeout=200):
+    def drain(self, rounds=3, timeout=100):
         for _ in range(rounds):
             try:
                 self.dev.read(EP_IN, 4096, timeout=timeout)
             except Exception:
                 break
 
-    def request(self, payload, wait=0.4):
-        """Envía un comando y devuelve la respuesta cruda (última recibida)."""
-        self.dev.write(EP_OUT, frame(payload), timeout=1500)
+    def request(self, payload, wait=0.5, retries=4):
+        """Envía un comando y devuelve la respuesta desescapada, o None."""
         import time
-        time.sleep(wait)
-        got = None
-        for _ in range(4):
-            try:
-                got = bytes(self.dev.read(EP_IN, 4096, timeout=500))
-            except Exception:
-                break
-        return got
+        for attempt in range(retries):
+            self.drain(rounds=2, timeout=100)
+            self.dev.write(EP_OUT, frame(payload), timeout=1500)
+            time.sleep(wait + attempt * 0.3)
+            for _ in range(3):
+                try:
+                    raw = bytes(self.dev.read(EP_IN, 4096, timeout=700))
+                except Exception:
+                    break
+                raw = raw.strip(b"\x7e")
+                got = unesc(raw)
+                if got:
+                    return got
+        return None
 
     def spc(self):
         """Autenticación de servicio: SPC + password."""
@@ -121,26 +134,25 @@ class Diag:
         return r1, r2
 
     def nv_read(self, item):
-        """Lee un NV item. Devuelve 128 bytes."""
-        req = b"\x26" + struct.pack("<H", item) + b"\x00\x00"
-        r = self.request(req, wait=0.5)
-        if not r:
-            return None
-        # respuesta: ... item(2) ... datos(128)
-        return r[-128:]
+        """Lee un NV item.
 
-    def nv_write(self, item, data):
-        """Escribe un NV item. data debe ser exactamente 128 bytes."""
-        if len(data) != 128:
-            raise ValueError("el bloque debe ser de 128 bytes")
-        req = b"\x27" + struct.pack("<H", item) + b"\x00\x00" + data
+        Devuelve la respuesta desescapada en bruto. El payload tiene
+        cabecera + item + datos + CRC; ver docs/03-nv.md para el formato.
+        """
+        req = b"\x26" + struct.pack("<H", item) + b"\x00\x00"
         return self.request(req, wait=0.6)
 
 
 if __name__ == "__main__":
     d = Diag().open()
     try:
-        d.spc()
-        print("NV item 0:", d.nv_read(0).hex())
+        spc_r, pw_r = d.spc()
+        print(f"SPC:      {'ok' if spc_r else 'sin respuesta'}")
+        print(f"password: {'ok' if pw_r else 'sin respuesta'}")
+        r = d.nv_read(0)
+        if r:
+            print(f"NV 0 ({len(r)} bytes): {r.hex()}")
+        else:
+            print("NV 0: sin respuesta (ver docstring: lectura intermitente)")
     finally:
         d.close()

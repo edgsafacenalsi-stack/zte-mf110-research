@@ -95,6 +95,25 @@ Empezá por [docs/00-INDICE.md](docs/00-INDICE.md).
 
 ---
 
+## Estado de verificación
+
+Probado contra hardware real (stick sano, `ZSEC 2,1`):
+
+| Script | Estado |
+|---|---|
+| `tools/at.py` | ✅ verificado |
+| `tools/partition_parse.py` | ✅ verificado |
+| `tools/disasm.py` | ✅ verificado |
+| `tools/strings_scan.py` | ✅ verificado |
+| `tools/diag.py` | ⚠️ abre y autentica; lectura NV intermitente |
+| `tools/nv.py` | ⚠️ depende de lo anterior; reintenta |
+| `tools/dl76.py` | ⚠️ requiere entrar a `0076`; no probado de punta a punta |
+| `tools/dl76_crc_hunt.py` | ⚠️ requiere `0076` con ttyUSB |
+
+Las limitaciones están explicadas en cada documento, no escondidas.
+
+---
+
 ## Lo que NO funcionó (y por qué)
 
 Esto está documentado a propósito: evita que otros repitan el trabajo.
