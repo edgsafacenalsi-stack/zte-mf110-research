@@ -14,6 +14,7 @@
 | 10 | [Cómo seguir](10-como-seguir.md) | Próximos pasos concretos |
 | 11 | [El protocolo desde QPST](11-protocolo-desde-qpst.md) | **El CRC real y el cliente funcional** |
 | 12 | [Estado del stick y recuperación](12-estado-y-recuperacion.md) | Cómo verificar que está sano y volver |
+| 13 | [Ingeniería del paquete de escritura](13-paquete-escritura.md) | Qué se sabe del flasheo y qué falta |
 
 ## Lectura rápida
 
